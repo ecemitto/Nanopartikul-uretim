@@ -1,40 +1,39 @@
 State Machine Tabanlı Cihaz Kontrol Sistemi
 Proje Amacı
 
-Bu proje, bir cihazın çalışma sürecini state machine (durum makinesi) yaklaşımıyla modellemek ve bu yapıyı basit bir Tkinter tabanlı kullanıcı arayüzü ile kontrol edilebilir hale getirmek amacıyla geliştirilmiştir.
+Bu proje, gümüş nanopartikül sentezi gerçekleştiren bir cihazın **State Machine (Durum Makinesi)** mimarisi ile tam otomatik kontrolünü ve süreç simülasyonunu içerir. Kullanıcıdan alınan parametrelere göre otonom bir akış yönetir ve olası donanım arızalarına karşı gelişmiş güvenlik protokolleri sunar.
 
-Kullanılan Yaklaşım
+##  Öne Çıkan Özellikler
 
-Cihazın tüm çalışma akışı Enum kullanılarak tanımlanmış durumlar üzerinden ilerlemektedir.
-Durum geçişleri merkezi bir DeviceController sınıfı tarafından yönetilmektedir. Bu sayede sistem daha okunabilir, kontrollü ve genişletilebilir bir yapıya sahiptir.
+### 1. Otomatik Proses Akışı (Automation)
+Süreç, manuel müdahale gerektirmeden aşağıdaki adımları sırasıyla takip eder:
+* **MIXING:** Belirlenen süre boyunca karıştırma.
+* **HEATING:** Hedef sıcaklığa ulaşana kadar ısıtma (Event-based transition).
+* **SEPARATION & CLEANING:** Süre bazlı otomatik ayrıştırma ve temizleme adımları.
+* **FINISH:** Süreç özeti ve parçacık boyutu hesaplaması.
 
-Durum Akışı
+### 2. Parametre Etkileşimi & Simülasyon
+Sentez sonucu, girilen parametrelerin (RPM, Sıcaklık, Süre) bir fonksiyonu olarak hesaplanır:
+- **Kinetik Etki:** Yüksek RPM değerleri, daha homojen dağılım ve küçük parçacık boyutu ($nm$) simüle eder.
+- **Termal Etki:** İdeal sentez sıcaklığından (70°C) sapmalar, modelde parçacık büyümesine (aglomerasyon) neden olur.
 
-IDLE → START → MIXING → HEATING → SEPARATION → CLEANING → FINISH → IDLE
+### 3. Gelişmiş Hata Yönetimi & Fail-Safe
+Endüstriyel güvenlik standartlarına uygun olarak sistemde **Safety Interlock (Güvenlik Kilidi)** mekanizması bulunmaktadır:
+* **Hata Tipleri:** Aşırı Isınma (>115°C), Yüksek RPM Kararsızlığı (>1800), Düşük Tork/Motor Sıkışması (<50 RPM).
+* **Interlock:** Hata oluştuğunda sistem `FAIL_SAFE` moduna geçer; hata sıfırlanmadan (`RESET`) sistemin yeniden başlatılması engellenir.
+* **Logging:** Tüm süreç adımları ve hata raporları zaman damgalı olarak `process_log.txt` dosyasına kaydedilir.
 
-Herhangi bir aşamada hata oluşması durumunda sistem FAIL-SAFE moduna geçerek işlemleri güvenli şekilde durdurur.
+## 🛠️ Teknik Detaylar
+- **Dil:** Python 3.x
+- **Kütüphaneler:** `tkinter` (UI), `enum`, `datetime`
+- **Mimari:** Event-Driven State Machine
 
-Hata ve Güvenlik Yönetimi
+## 🚀 Kurulum ve Çalıştırma
+1. Proje dosyalarını bilgisayarınıza indirin.
+2. Terminal veya komut satırına `python main.py` yazarak uygulamayı başlatın.
+3. Arayüz üzerinden parametreleri (Sıcaklık, RPM, Süre) belirleyin ve **BAŞLAT** butonuna tıklayın.
 
-Isıtma aşamasında sıcaklık belirli bir eşik değerin üzerine çıkarsa sistem otomatik olarak hata durumuna geçer ve:
+---
 
-Tüm kontrol parametreleri sıfırlanır
-
-Cihaz güvenli duruma alınır
-
-Bu yapı, gerçek sistemlerde kullanılan temel güvenlik mantığını simüle etmektedir.
-
-Kullanıcı Arayüzü
-
-Tkinter kullanılarak geliştirilen arayüz üzerinden:
-
-Sıcaklık, karıştırma hızı ve süre ayarlanabilir
-
-Sistem başlatılabilir veya durdurulabilir
-
-Cihazın anlık durumu canlı olarak izlenebilir
-
-Not
-
-Bu proje bir simülasyon çalışmasıdır ve gerçek donanım kontrolü içermemektedir. Amaç, durum tabanlı kontrol mantığını ve yazılım mimarisini göstermektir.
-
+### 💡 Geliştirici Notu
+Bu çalışma; sadece bir kod prototipi değil, hata payını minimize eden, izlenebilir (logging) ve bilimsel varsayımlara dayalı bir **Sistem Tasarımı** yaklaşımıyla geliştirilmiştir.
