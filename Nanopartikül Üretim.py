@@ -1,138 +1,187 @@
 import tkinter as tk
+from tkinter import messagebox
 from enum import Enum, auto
+import datetime
 
-# =====================================================
-# STATE DEFINITIONS
-# =====================================================
 class DeviceState(Enum):
     IDLE = auto()
-    START = auto()
     MIXING = auto()
     HEATING = auto()
     SEPARATION = auto()
     CLEANING = auto()
     FINISH = auto()
-    ERROR = auto()
     FAIL_SAFE = auto()
 
-# =====================================================
-# STATE MACHINE / DEVICE CONTROLLER
-# =====================================================
 class DeviceController:
     def __init__(self):
         self.state = DeviceState.IDLE
         self.temperature = 25
+        self.target_temp = 90
         self.rpm = 500
-        self.duration = 60
+        self.duration = 5
+        
+        self.time_counter = 0
+        self.current_step_duration = 0
+        self.separation_time = 3
+        self.cleaning_time = 2
+        self.error_msg = ""
 
-    # -----------------------------
-    # FAIL SAFE
-    # -----------------------------
-    def enter_fail_safe(self):
-        self.temperature = 0
-        self.rpm = 0
+    def log_event(self, message):
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        log_entry = f"[{timestamp}] State: {self.state.name} | {message}\n"
+        with open("process_log.txt", "a", encoding="utf-8") as f:
+            f.write(log_entry)
+
+    def enter_fail_safe(self, reason):
+        self.error_msg = reason
         self.state = DeviceState.FAIL_SAFE
+        self.log_event(f"HATA OLUŞTU: {reason}")
+        self.temperature = 25
+        self.rpm = 0
 
-    # -----------------------------
-    # USER ACTIONS
-    # -----------------------------
+    def reset_system(self):
+        self.state = DeviceState.IDLE
+        self.error_msg = ""
+        self.temperature = 25
+        self.log_event("Sistem kullanıcı tarafından sıfırlandı.")
+
+    def check_errors(self):
+        if self.state == DeviceState.FAIL_SAFE: return
+        
+        if self.temperature > 115:
+            self.enter_fail_safe("Kritik Sıcaklık Limiti Aşıldı (>115°C)")
+        elif self.rpm > 1800:
+            self.enter_fail_safe("Yüksek RPM Kararsızlığı (>1800)")
+        elif self.state not in [DeviceState.IDLE, DeviceState.FINISH] and self.rpm < 50:
+            self.enter_fail_safe("Motor Tork Kaybı / Sıkışma")
+
     def start(self):
-        if self.state == DeviceState.IDLE:
-            self.state = DeviceState.START
+        # GÜVENLİK KİLİDİ: Hata varken başlatma
+        if self.state == DeviceState.FAIL_SAFE:
+            messagebox.showerror("GÜVENLİK ENGELİ", f"Sistemde çözülmemiş hata var: {self.error_msg}\nLütfen 'SIFIRLA' butonuna basın.")
+            return
+
+        if self.state in [DeviceState.IDLE, DeviceState.FINISH]:
+            self.state = DeviceState.MIXING
+            self.time_counter = 0
+            self.current_step_duration = self.duration
+            self.log_event("Süreç Otomatik Olarak Başlatıldı")
 
     def stop(self):
-        self.enter_fail_safe()
+        self.enter_fail_safe("Kullanıcı Acil Durdurma")
 
-    def trigger_error(self):
-        self.state = DeviceState.ERROR
-        self.enter_fail_safe()
+    def update(self):
+        self.check_errors()
+        if self.state in [DeviceState.FAIL_SAFE, DeviceState.IDLE]:
+            return
 
-    # -----------------------------
-    # STATE TRANSITION LOGIC
-    # -----------------------------
-    def next_state(self):
-        if self.state == DeviceState.START:
-            self.state = DeviceState.MIXING
-        elif self.state == DeviceState.MIXING:
-            self.state = DeviceState.HEATING
+        if self.state == DeviceState.MIXING:
+            self.time_counter += 1
+            if self.time_counter >= self.current_step_duration:
+                self.state = DeviceState.HEATING
+                self.time_counter = 0
+
         elif self.state == DeviceState.HEATING:
-            # Örnek hata simülasyonu
-            if self.temperature > 250:
-                self.trigger_error()
+            if self.temperature < self.target_temp:
+                self.temperature += 3
             else:
                 self.state = DeviceState.SEPARATION
+                self.time_counter = 0
+                self.current_step_duration = self.separation_time
+
         elif self.state == DeviceState.SEPARATION:
-            self.state = DeviceState.CLEANING
+            self.time_counter += 1
+            if self.time_counter >= self.current_step_duration:
+                self.state = DeviceState.CLEANING
+                self.time_counter = 0
+                self.current_step_duration = self.cleaning_time
+
         elif self.state == DeviceState.CLEANING:
-            self.state = DeviceState.FINISH
+            self.time_counter += 1
+            if self.time_counter >= self.current_step_duration:
+                self.state = DeviceState.FINISH
+
         elif self.state == DeviceState.FINISH:
-            self.state = DeviceState.IDLE
-        elif self.state == DeviceState.FAIL_SAFE:
+            res = self.calculate_particle()
+            messagebox.showinfo("İşlem Tamamlandı", res)
             self.state = DeviceState.IDLE
 
-# =====================================================
-# UI LAYER
-# =====================================================
+    def calculate_particle(self):
+        base_size = 120
+        temp_effect = abs(self.target_temp - 70) * 0.4
+        rpm_effect = self.rpm / 150
+        particle_size = (base_size + temp_effect) / (1 + rpm_effect)
+        msg = f"Sentez Sonucu: {round(particle_size, 2)} nm"
+        self.log_event(msg)
+        return msg
+
 device = DeviceController()
 
-def update_status():
-    state_text = device.state.name
-    status_label.config(text=f"Durum: {state_text}")
+def update_ui():
+    status_label.config(text=f"Durum: {device.state.name}")
+    temp_display.config(text=f"Anlık Sıcaklık: {device.temperature}°C")
+    
+    if device.state in [DeviceState.MIXING, DeviceState.SEPARATION, DeviceState.CLEANING]:
+        remaining = device.current_step_duration - device.time_counter
+        timer_label.config(text=f"Kalan Süre: {remaining} sn", fg="#0056b3")
+    elif device.state == DeviceState.HEATING:
+        timer_label.config(text="Isınıyor...", fg="#d9534f")
+    else:
+        timer_label.config(text="")
 
-def start_device():
-    device.start()
-    update_status()
+    if device.state == DeviceState.FAIL_SAFE:
+        status_label.config(fg="red")
+        error_display.config(text=f"DURDURULDU: {device.error_msg}")
+    elif device.state == DeviceState.IDLE:
+        status_label.config(fg="black")
+        error_display.config(text="")
+    else:
+        status_label.config(fg="green")
 
-def stop_device():
-    device.stop()
-    update_status()
+def loop():
+    device.update()
+    update_ui()
+    root.after(1000, loop)
 
-def next_step():
-    device.next_state()
-    update_status()
+def set_temp(v): device.target_temp = int(v)
+def set_rpm(v): device.rpm = int(v)
+def set_time(v): device.duration = int(v)
 
-def set_temp(v):
-    device.temperature = int(v)
-
-def set_rpm(v):
-    device.rpm = int(v)
-
-def set_time(v):
-    device.duration = int(v)
-
-# -----------------------------
-# TKINTER UI
-# -----------------------------
+# --- UI TASARIMI ---
 root = tk.Tk()
-root.title("Nanopartikül Üretim Kontrolü")
-root.geometry("480x400")
-root.resizable(False, False)
+root.title("NanoPro Control System v2.1")
+root.geometry("450x600")
 
-status_label = tk.Label(
-    root, text="Durum: IDLE",
-    font=("Arial", 16, "bold"),
-    bg="gray", fg="white", pady=10
-)
-status_label.pack(fill="x")
+status_label = tk.Label(root, text="Durum: IDLE", font=("Arial", 16, "bold"))
+status_label.pack(pady=15)
 
-settings = tk.LabelFrame(root, text="Parametreler", padx=10, pady=10)
-settings.pack(padx=10, pady=10, fill="x")
+timer_label = tk.Label(root, text="", font=("Arial", 12, "bold"))
+timer_label.pack()
 
-tk.Label(settings, text="Sıcaklık (°C)").grid(row=0, column=0, sticky="w")
-tk.Scale(settings, from_=0, to=300, orient=tk.HORIZONTAL, command=set_temp).grid(row=0, column=1)
+temp_display = tk.Label(root, text="Sıcaklık: 25°C", font=("Arial", 10))
+temp_display.pack(pady=5)
 
-tk.Label(settings, text="Karıştırma Hızı (RPM)").grid(row=1, column=0, sticky="w")
-tk.Scale(settings, from_=0, to=2000, orient=tk.HORIZONTAL, command=set_rpm).grid(row=1, column=1)
+error_display = tk.Label(root, text="", fg="red", font=("Arial", 10, "italic"))
+error_display.pack()
 
-tk.Label(settings, text="Süre (sn)").grid(row=2, column=0, sticky="w")
-tk.Scale(settings, from_=0, to=600, orient=tk.HORIZONTAL, command=set_time).grid(row=2, column=1)
+param_frame = tk.LabelFrame(root, text=" Sistem Parametreleri ", padx=10, pady=10)
+param_frame.pack(padx=20, pady=10, fill="x")
 
-buttons = tk.Frame(root)
-buttons.pack(pady=10)
+tk.Label(param_frame, text="Hedef Sıcaklık (°C):").pack()
+tk.Scale(param_frame, from_=25, to=150, orient="horizontal", command=set_temp).pack(fill="x")
 
-tk.Button(buttons, text="BAŞLAT", width=12, command=start_device).grid(row=0, column=0, padx=5)
-tk.Button(buttons, text="SONRAKİ ADIM", width=12, command=next_step).grid(row=0, column=1, padx=5)
+tk.Label(param_frame, text="Karıştırma Hızı (RPM):").pack()
+tk.Scale(param_frame, from_=0, to=2000, orient="horizontal", command=set_rpm).pack(fill="x")
 
-tk.Button(root, text="DURDUR", width=28, command=stop_device).pack(pady=5)
+tk.Label(param_frame, text="Başlangıç Karıştırma Süresi (sn):").pack()
+tk.Scale(param_frame, from_=1, to=30, orient="horizontal", command=set_time).pack(fill="x")
 
+btn_frame = tk.Frame(root)
+btn_frame.pack(pady=15)
+
+tk.Button(btn_frame, text="BAŞLAT", command=device.start, bg="#d4edda", width=15, height=2).grid(row=0, column=0, padx=5)
+tk.Button(btn_frame, text="ACİL DURDUR", command=device.stop, bg="#f8d7da", width=15, height=2).grid(row=0, column=1, padx=5)
+tk.Button(btn_frame, text="SİSTEMİ SIFIRLA", command=device.reset_system, bg="#e2e3e5", width=32).grid(row=1, column=0, columnspan=2, pady=10)
+
+loop()
 root.mainloop()
